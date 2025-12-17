@@ -1,4 +1,4 @@
-name: Test Build
+name: Full Build
 
 on:
   workflow_dispatch:
@@ -8,9 +8,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      ANDROID_API_LEVEL: 30
-      ANDROID_BUILD_TOOLS_VERSION: 30.0.3
+      ANDROID_API_LEVEL: 33
+      ANDROID_BUILD_TOOLS_VERSION: 33.0.2
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      JAVA_HOME: /usr/lib/jvm/adoptopenjdk-17-hotspot
 
     steps:
       - name: Checkout repository with submodules
@@ -33,7 +34,7 @@ jobs:
       - name: Download Android SDK
         run: |
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-7302050_latest.zip -o sdk.zip
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -o sdk.zip
           unzip -q sdk.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           rm sdk.zip
@@ -44,13 +45,20 @@ jobs:
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
             "platform-tools" \
             "platforms;android-${ANDROID_API_LEVEL}" \
-            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
+            "ndk;25.2.9519653" \
+            "cmake;3.22.1"
 
       - name: Grant gradlew permission
         run: chmod +x gradlew
 
-      - name: Build APK (skip quickjs)
-        run: ./gradlew clean assembleRelease -x quickjs:build
+      - name: Force compileSdkVersion & ndk.abiFilters
+        run: |
+          find . -name "build.gradle" -exec sed -i '/android {/a \    compileSdkVersion '"$ANDROID_API_LEVEL"'\n    ndk {\n        abiFilters "armeabi-v7a","arm64-v8a","x86","x86_64"\n    }' {} \;
+
+      - name: Build all modules including quickjs
+        run: |
+          ./gradlew clean assembleRelease --stacktrace --warning-mode all
 
       - name: Collect APK
         run: |
