@@ -3,29 +3,15 @@ plugins {
 }
 
 android {
-    namespace 'com.fongmi.android.tv.quickjs'
-
-    compileSdk {
-        version = release(36) {
-            it.minorApiLevel = 1
-        }
-    }
+    namespace "com.fongmi.quickjs"
+    compileSdk 30
 
     defaultConfig {
-        minSdk 24
-        targetSdk 36
-    }
-
-    compileOptions {
-        coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        minSdk 21
+        targetSdk 30
     }
 }
 
 dependencies {
-    implementation project(':catvod')
-    implementation 'wang.harlon.quickjs:wrapper-java:3.2.3'
-    implementation 'wang.harlon.quickjs:wrapper-android:3.2.3'
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
+    // 你的依赖写这里
 }
