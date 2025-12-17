@@ -1,65 +1,55 @@
 name: Build TV-FongMi
 
 on:
-  workflow_dispatch:  # 手动触发
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
       JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
-      ANDROID_HOME: /usr/local/android-sdk
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
 
     steps:
+      # 1️⃣ 拉取代码
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2️⃣ 安装 JDK 11
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: 11
 
-      - name: Cache Gradle
-        uses: actions/cache@v3
+      # 3️⃣ 安装 Android SDK
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v2
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+          api-level: 33
+          build-tools: 33.0.2
+          cache: true
 
-      - name: Cache Android SDK
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.ANDROID_HOME }}
-          key: android-sdk-${{ runner.os }}-latest
-
-      - name: Install Android SDK dependencies
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33"
-
+      # 4️⃣ 给 gradlew 授权
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      # 5️⃣ 构建 app 模块
       - name: Build app
         continue-on-error: true
         run: ./gradlew :app:clean :app:assembleRelease --stacktrace
 
+      # 6️⃣ 构建 quickjs 模块
       - name: Build quickjs
         continue-on-error: true
         run: ./gradlew :quickjs:clean :quickjs:assembleRelease --stacktrace
 
+      # 7️⃣ 构建 pyramid 模块
       - name: Build pyramid
         continue-on-error: true
         run: ./gradlew :pyramid:clean :pyramid:assembleRelease --stacktrace
 
+      # 8️⃣ 上传 APK，无论构建是否失败
       - name: Upload APKs
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,10 +59,3 @@ jobs:
             app/build/outputs/**/*.apk
             quickjs/build/outputs/**/*.apk
             pyramid/build/outputs/**/*.apk
-
-      - name: Upload Build Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build_logs
-          path: build_logs/
