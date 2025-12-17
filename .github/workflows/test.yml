@@ -1,4 +1,4 @@
-name: Test Build
+name: Build APK
 
 on:
   workflow_dispatch:
@@ -8,12 +8,13 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       ANDROID_API_LEVEL: 30
       ANDROID_BUILD_TOOLS_VERSION: 30.0.3
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_NDK_VERSION: 25.2.9519653
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -26,9 +27,9 @@ jobs:
       - name: Set up Python 3.8
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: 3.8
 
-      - name: Download Android SDK
+      - name: Download Android SDK cmdline-tools
         run: |
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-7302050_latest.zip -o sdk.zip
@@ -36,20 +37,23 @@ jobs:
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           rm sdk.zip
 
-      - name: Install Android SDK packages
+      - name: Install SDK, Build Tools, NDK & Licenses
         run: |
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
             "platform-tools" \
             "platforms;android-${ANDROID_API_LEVEL}" \
             "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
-            "ndk;25.2.9519653"
+            "ndk;${ANDROID_NDK_VERSION}"
 
-      - name: Grant gradlew permission
-        run: chmod +x gradlew
+      - name: Grant gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Force Gradle wrapper to 8.13
+        run: ./gradlew wrapper --gradle-version 8.13
 
       - name: Build APK
-        run: ./gradlew clean assembleRelease
+        run: ./gradlew clean assembleRelease -Pandroid.overridePathCheck=true
 
       - name: Collect APK
         run: |
