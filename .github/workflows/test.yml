@@ -9,7 +9,7 @@ jobs:
     env:
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
-      ANDROID_SDK_ROOT: /usr/local/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
 
     steps:
       # 1️⃣ 拉取代码
@@ -23,13 +23,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # 3️⃣ 安装 Android SDK
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v2
-        with:
-          api-level: 33
-          build-tools: 33.0.2
-          cache: true
+      # 3️⃣ 安装 Android SDK（手动安装）
+      - name: Install Android SDK
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd $ANDROID_SDK_ROOT/cmdline-tools
+          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -o cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest
+          rm cmdline-tools.zip
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platforms;android-33" "build-tools;33.0.2" || true
 
       # 4️⃣ 接受 SDK License
       - name: Accept Android SDK Licenses
@@ -68,15 +71,21 @@ jobs:
               echo "Module $module does not exist, skipping"
             fi
 
-      # 9️⃣ 收集 APK 文件
+      # 9️⃣ 打印构建失败日志
+      - name: Print build logs
+        if: failure()
+        run: |
+          echo "Some modules failed to build. Check logs above."
+
+      # 🔟 收集 APK 文件
       - name: Collect all APKs
         run: |
           mkdir -p apks
           find ./app/build ./quickjs/build ./pyramid/build -type f -name "*.apk" -exec cp {} apks/ \;
           echo "Found APKs:"
-          ls -l apks
+          ls -l apks || echo "No APKs found"
 
-      # 🔟 上传 APK
+      # 1️⃣1️⃣ 上传 APK
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
