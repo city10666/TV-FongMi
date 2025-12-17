@@ -41,11 +41,27 @@ jobs:
     - name: Make gradlew executable
       run: chmod +x ./gradlew
 
-    - name: Build all modules (ignore failures)
+    - name: Build app module
       run: |
         set +e
-        ./gradlew clean assembleRelease || echo "Build failed for some modules, continuing..."
+        ./gradlew :app:clean :app:assembleRelease || echo "app module build failed"
+
+    - name: Build quickjs module
+      run: |
+        set +e
+        ./gradlew :quickjs:clean :quickjs:assembleRelease || echo "quickjs module build failed"
+
+    - name: Build pyramid module
+      run: |
+        set +e
+        ./gradlew :pyramid:clean :pyramid:assembleRelease || echo "pyramid module build failed"
 
     - name: Archive APKs
       if: always()
       uses: actions/upload-artifact@v3
+      with:
+        name: apks
+        path: |
+          app/build/outputs/**/*.apk
+          quickjs/build/outputs/**/*.apk
+          pyramid/build/outputs/**/*.apk
