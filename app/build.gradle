@@ -29,5 +29,5 @@ android {
 
 dependencies {
     implementation project(':quickjs')
-    pythonImplementation project(':pyramid')
+    implementation project(':pyramid')
 }
