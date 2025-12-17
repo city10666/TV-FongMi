@@ -47,8 +47,11 @@ jobs:
       - name: Grant gradlew permission
         run: chmod +x gradlew
 
-      - name: Build APK
-        run: ./gradlew clean assembleRelease
+      - name: Build APK (Gradle 7.6)
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 7.6
+          arguments: clean assembleRelease
 
       - name: Collect APK
         run: |
