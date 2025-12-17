@@ -1,8 +1,3 @@
-plugins {
-    id 'com.android.application'
-    id 'com.chaquo.python'
-}
-
 android {
     namespace "com.fongmi.android.tv"
     compileSdk 30
@@ -13,6 +8,11 @@ android {
         targetSdk 30
         versionCode 1
         versionName "1.0"
+
+        // Chaquopy 必须加
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
 
         python {
             version "3.8"
@@ -25,9 +25,4 @@ android {
             signingConfig signingConfigs.debug
         }
     }
-}
-
-dependencies {
-    implementation project(':quickjs')
-    implementation project(':pyramid')
 }
