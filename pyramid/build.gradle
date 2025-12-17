@@ -1,6 +1,5 @@
 plugins {
     id 'com.android.library'
-    id 'com.chaquo.python'
 }
 
 android {
@@ -13,8 +12,6 @@ android {
     }
 }
 
-python {
-    pip {
-        install "requests"
-    }
+dependencies {
+    // 没有 python{}，pyramid 只作为普通模块
 }
