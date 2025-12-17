@@ -1,56 +1,68 @@
 name: Build TV-FongMi
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # 手动触发
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      JAVA_HOME: /usr/lib/jvm/java-17-openjdk
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+      ANDROID_HOME: /usr/local/android-sdk
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 11
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y unzip wget
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
-      - name: Setup Android SDK
+      - name: Cache Android SDK
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.ANDROID_HOME }}
+          key: android-sdk-${{ runner.os }}-latest
+
+      - name: Install Android SDK dependencies
         run: |
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
-          $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33"
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build all modules
-        run: |
-          mkdir -p build_logs
-          modules=("app" "quickjs" "pyramid")
-          for module in "${modules[@]}"; do
-            if [ -d "$module" ]; then
-              echo "==== Building $module module ===="
-              ./gradlew :$module:clean :$module:assembleRelease > build_logs/$module.log 2>&1 || echo "$module module build failed, see build_logs/$module.log"
-            else
-              echo "==== $module module does not exist, skipping ===="
-            fi
-          done
+      - name: Build app
+        continue-on-error: true
+        run: ./gradlew :app:clean :app:assembleRelease --stacktrace
+
+      - name: Build quickjs
+        continue-on-error: true
+        run: ./gradlew :quickjs:clean :quickjs:assembleRelease --stacktrace
+
+      - name: Build pyramid
+        continue-on-error: true
+        run: ./gradlew :pyramid:clean :pyramid:assembleRelease --stacktrace
 
       - name: Upload APKs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: apks
           path: |
@@ -60,7 +72,7 @@ jobs:
 
       - name: Upload Build Logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build_logs
           path: build_logs/
