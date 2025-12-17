@@ -40,19 +40,14 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build app module
+      - name: Build all modules
         run: |
           set +e
+          echo "==== Build app module ===="
           ./gradlew :app:clean :app:assembleRelease || echo "app module build failed"
-
-      - name: Build quickjs module
-        run: |
-          set +e
+          echo "==== Build quickjs module ===="
           ./gradlew :quickjs:clean :quickjs:assembleRelease || echo "quickjs module build failed"
-
-      - name: Build pyramid module
-        run: |
-          set +e
+          echo "==== Build pyramid module ===="
           ./gradlew :pyramid:clean :pyramid:assembleRelease || echo "pyramid module build failed"
 
       - name: Archive APKs
