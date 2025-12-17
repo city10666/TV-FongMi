@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
 
     steps:
@@ -15,14 +15,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ 安装 JDK 11
-      - name: Set up JDK
+      # 2️⃣ 安装 JDK 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 11
+          java-version: 17
 
-      # 3️⃣ 安装 Android SDK
+      # 3️⃣ 安装 Android SDK 并缓存
       - name: Set up Android SDK
         uses: android-actions/setup-android@v2
         with:
@@ -34,28 +34,29 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # 5️⃣ 构建 app 模块
-      - name: Build app
+      # 5️⃣ 构建所有模块，允许失败
+      - name: Build modules
         continue-on-error: true
-        run: ./gradlew :app:clean :app:assembleRelease --stacktrace
+        run: |
+          for module in app quickjs pyramid; do
+            echo "Building $module..."
+            ./gradlew ":$module:clean" ":$module:assembleRelease" --stacktrace || echo "$module build failed, continue"
+          done
 
-      # 6️⃣ 构建 quickjs 模块
-      - name: Build quickjs
-        continue-on-error: true
-        run: ./gradlew :quickjs:clean :quickjs:assembleRelease --stacktrace
+      # 6️⃣ 搜集 APK 路径
+      - name: Collect APKs
+        id: collect
+        run: |
+          mkdir -p apks
+          find ./app/build ./quickjs/build ./pyramid/build -type f -name "*.apk" -exec cp {} apks/ \;
+          echo "Found APKs:"
+          ls -l apks
+          echo "::set-output name=apk_path::apks"
 
-      # 7️⃣ 构建 pyramid 模块
-      - name: Build pyramid
-        continue-on-error: true
-        run: ./gradlew :pyramid:clean :pyramid:assembleRelease --stacktrace
-
-      # 8️⃣ 上传 APK，无论构建是否失败
+      # 7️⃣ 上传 APK，无论构建是否失败
       - name: Upload APKs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: apks
-          path: |
-            app/build/outputs/**/*.apk
-            quickjs/build/outputs/**/*.apk
-            pyramid/build/outputs/**/*.apk
+          name: TV-FongMi-APKs
+          path: ${{ steps.collect.outputs.apk_path }}
