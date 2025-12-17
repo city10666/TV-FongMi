@@ -42,7 +42,8 @@ jobs:
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
             "platform-tools" \
             "platforms;android-${ANDROID_API_LEVEL}" \
-            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
+            "ndk;25.2.9519653"
 
       - name: Grant gradlew permission
         run: chmod +x gradlew
