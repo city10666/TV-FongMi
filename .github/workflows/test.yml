@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     env:
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk
@@ -39,25 +39,6 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Inject compileSdkVersion and ndk filters
+      - name: Inject compileSdkVersion and NDK filters
         run: |
-          find ./app ./quickjs ./pyramid -name "build.gradle" -exec sed -i '/android {/a \
-              compileSdkVersion 33\
-              defaultConfig {\
-                  ndk { abiFilters "armeabi-v7a","arm64-v8a","x86","x86_64" }\
-              }' {} \;
-
-      - name: Build all modules
-        run: |
-          ./gradlew clean assembleRelease --stacktrace --warning-mode all --continue
-        continue-on-error: true
-
-      - name: Upload APKs
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: apk
-          path: |
-            app/build/outputs/**/*.apk
-            quickjs/build/outputs/**/*.apk
-            pyramid/build/outputs/**/*.apk
+          for f in $(find ./app ./quickjs ./pyramid -nam
