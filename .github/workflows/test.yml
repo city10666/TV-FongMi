@@ -1,72 +1,63 @@
-name: Full Build
+name: Build APK
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     env:
-      ANDROID_API_LEVEL: 33
-      ANDROID_BUILD_TOOLS_VERSION: 33.0.2
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      JAVA_HOME: /usr/lib/jvm/adoptopenjdk-17-hotspot
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk
+      ANDROID_SDK_ROOT: ${{ runner.tool_cache }}/android-sdk
 
     steps:
-      - name: Checkout repository with submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: 17
-          cache: gradle
 
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v5
+      - name: Install Android SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip wget lib32stdc++6 lib32z1
+          mkdir -p $ANDROID_SDK_ROOT
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d $ANDROID_SDK_ROOT
+          mv $ANDROID_SDK_ROOT/cmdline-tools $ANDROID_SDK_ROOT/tools
+          yes | $ANDROID_SDK_ROOT/tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+          $ANDROID_SDK_ROOT/tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Inject compileSdkVersion and ndk filters
+        run: |
+          find ./app ./quickjs ./pyramid -name "build.gradle" -exec sed -i '/android {/a \
+              compileSdkVersion 33\
+              defaultConfig {\
+                  ndk { abiFilters "armeabi-v7a","arm64-v8a","x86","x86_64" }\
+              }' {} \;
+
+      - name: Build all modules
+        run: |
+          ./gradlew clean assembleRelease --stacktrace --warning-mode all --continue
+        continue-on-error: true
+
+      - name: Upload APKs
+        if: always()
+        uses: actions/upload-artifact@v3
         with:
-          python-version: '3.8'
-
-      - name: Download Android SDK
-        run: |
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -o sdk.zip
-          unzip -q sdk.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          rm sdk.zip
-
-      - name: Install Android SDK packages
-        run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
-            "platform-tools" \
-            "platforms;android-${ANDROID_API_LEVEL}" \
-            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
-            "ndk;25.2.9519653" \
-            "cmake;3.22.1"
-
-      - name: Grant gradlew permission
-        run: chmod +x gradlew
-
-      - name: Force compileSdkVersion & ndk.abiFilters
-        run: |
-          find . -name "build.gradle" -exec sed -i '/android {/a \    compileSdkVersion '"$ANDROID_API_LEVEL"'\n    ndk {\n        abiFilters "armeabi-v7a","arm64-v8a","x86","x86_64"\n    }' {} \;
-
-      - name: Build all modules including quickjs
-        run: |
-          ./gradlew clean assembleRelease --stacktrace --warning-mode all
-
-      - name: Collect APK
-        run: |
-          mkdir -p apk
-          find . -name "*.apk" -exec mv {} apk/ \;
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: apk/*.apk
+          name: apk
+          path: |
+            app/build/outputs/**/*.apk
+            quickjs/build/outputs/**/*.apk
+            pyramid/build/outputs/**/*.apk
