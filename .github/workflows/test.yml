@@ -1,4 +1,4 @@
-name: Build TV-FongMi
+name: Build TV-FongMi APKs
 
 on:
   workflow_dispatch:
@@ -9,10 +9,11 @@ jobs:
     env:
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
+      ANDROID_SDK_ROOT: /usr/local/android-sdk
 
     steps:
       # 1️⃣ 拉取代码
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       # 2️⃣ 安装 JDK 17
@@ -22,7 +23,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # 3️⃣ 安装 Android SDK 并缓存
+      # 3️⃣ 安装 Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v2
         with:
@@ -30,7 +31,11 @@ jobs:
           build-tools: 33.0.2
           cache: true
 
-      # 4️⃣ 缓存 Gradle
+      # 4️⃣ 接受 SDK License
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      # 5️⃣ 缓存 Gradle
       - name: Cache Gradle
         uses: actions/cache@v3
         with:
@@ -41,13 +46,18 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # 5️⃣ 给 gradlew 授权
+      # 6️⃣ 给 gradlew 授权
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # 6️⃣ 自动检测存在模块并构建
-      - name: Build existing modules
-        continue-on-error: true
+      # 7️⃣ 设置 Java 17 编译选项
+      - name: Set Java 17 compile options
+        run: |
+          echo "org.gradle.java.home=${JAVA_HOME}" >> gradle.properties
+          echo "org.gradle.jvmargs=-Xmx2g --release 17" >> gradle.properties
+
+      # 8️⃣ 独立构建模块，失败不停止
+      - name: Build all modules (ignore failures)
         run: |
           modules=("app" "quickjs" "pyramid")
           for module in "${modules[@]}"; do
@@ -57,22 +67,18 @@ jobs:
             else
               echo "Module $module does not exist, skipping"
             fi
-          done
 
-      # 7️⃣ 收集 APK 文件
-      - name: Collect APKs
-        id: collect
+      # 9️⃣ 收集 APK 文件
+      - name: Collect all APKs
         run: |
           mkdir -p apks
           find ./app/build ./quickjs/build ./pyramid/build -type f -name "*.apk" -exec cp {} apks/ \;
           echo "Found APKs:"
           ls -l apks
-          echo "apk_path=apks" >> $GITHUB_ENV
 
-      # 8️⃣ 上传 APK
+      # 🔟 上传 APK
       - name: Upload APKs
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: TV-FongMi-APKs
-          path: ${{ env.apk_path }}
+          path: apks
