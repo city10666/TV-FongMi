@@ -1,89 +1,65 @@
-name: Build TV-FongMi APKs
+name: Build APKs
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
-  build:
+  build-apks:
     runs-on: ubuntu-latest
     env:
-      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      JAVA_HOME: ${{ runner.tool_cache }}/java/17.0.8/x64
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          distribution: temurin
           java-version: 17
+          distribution: temurin
 
-      - name: Install Android SDK
-        run: |
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          cd $ANDROID_SDK_ROOT/cmdline-tools
-          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -o cmdline-tools.zip
-          unzip -q cmdline-tools.zip
-          mv cmdline-tools latest
-          rm cmdline-tools.zip
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platforms;android-33" "build-tools;33.0.2" || true
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          sdk-version: 33
+          build-tools: 33.0.2
+          cache: false
 
-      - name: Accept Android SDK Licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Accept licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
       - name: Cache Gradle
         uses: actions/cache@v3
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+          path: ./.gradle
+          key: gradle-${{ github.sha }}
+          restore-keys: gradle-
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Set Java 17 compile options
+      - name: Build Modules
         run: |
-          echo "org.gradle.java.home=${JAVA_HOME}" >> gradle.properties
-          echo "org.gradle.jvmargs=-Xmx2g --release 17" >> gradle.properties
-
-      - name: Build all modules (ignore failures)
-        run: |
+          mkdir -p apks
           modules=("app" "quickjs" "pyramid")
           for module in "${modules[@]}"; do
-            if [ -d "./$module" ]; then
-              echo "Building $module..."
-              ./gradlew ":$module:clean" ":$module:assembleRelease" --stacktrace || echo "$module build failed, continue"
+            echo "==> Building $module"
+            if ./gradlew :$module:clean :$module:assembleRelease > build_${module}.log 2>&1; then
+              echo "$module build succeeded."
+              find $module/build/outputs -name "*.apk" -exec cp {} apks/ \;
             else
-              echo "Module $module does not exist, skipping"
+              echo "$module build failed. See build_${module}.log"
+              cp build_${module}.log apks/
             fi
           done
 
-      - name: Ensure APKs directory exists
-        run: mkdir -p apks
-
-      - name: Collect all APKs
-        run: |
-          found=false
-          for module in app quickjs pyramid; do
-            if [ -d "./$module/build" ]; then
-              find "./$module/build" -type f -name "*.apk" -exec cp {} apks/ \; && found=true
-            fi
-          done
-          # 如果没有任何 APK，生成占位文件
-          if [ "$found" = false ]; then
-            echo "No APKs found, creating placeholder.apk"
-            touch apks/placeholder.apk
-          fi
-          ls -l apks
-
-      - name: Upload APKs
+      - name: Upload APKs and logs
         uses: actions/upload-artifact@v4
         with:
-          name: TV-FongMi-APKs
-          path: apks
+          name: apks-and-logs
+          path: apks/
