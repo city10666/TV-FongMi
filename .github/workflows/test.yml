@@ -30,20 +30,36 @@ jobs:
           build-tools: 33.0.2
           cache: true
 
-      # 4️⃣ 给 gradlew 授权
+      # 4️⃣ 缓存 Gradle
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # 5️⃣ 给 gradlew 授权
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # 5️⃣ 构建所有模块，允许失败
-      - name: Build modules
+      # 6️⃣ 自动检测存在模块并构建
+      - name: Build existing modules
         continue-on-error: true
         run: |
-          for module in app quickjs pyramid; do
-            echo "Building $module..."
-            ./gradlew ":$module:clean" ":$module:assembleRelease" --stacktrace || echo "$module build failed, continue"
+          modules=("app" "quickjs" "pyramid")
+          for module in "${modules[@]}"; do
+            if [ -d "./$module" ]; then
+              echo "Building $module..."
+              ./gradlew ":$module:clean" ":$module:assembleRelease" --stacktrace || echo "$module build failed, continue"
+            else
+              echo "Module $module does not exist, skipping"
+            fi
           done
 
-      # 6️⃣ 搜集 APK 路径
+      # 7️⃣ 收集 APK 文件
       - name: Collect APKs
         id: collect
         run: |
@@ -51,12 +67,12 @@ jobs:
           find ./app/build ./quickjs/build ./pyramid/build -type f -name "*.apk" -exec cp {} apks/ \;
           echo "Found APKs:"
           ls -l apks
-          echo "::set-output name=apk_path::apks"
+          echo "apk_path=apks" >> $GITHUB_ENV
 
-      # 7️⃣ 上传 APK，无论构建是否失败
+      # 8️⃣ 上传 APK
       - name: Upload APKs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: TV-FongMi-APKs
-          path: ${{ steps.collect.outputs.apk_path }}
+          path: ${{ env.apk_path }}
