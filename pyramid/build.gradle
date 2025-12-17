@@ -11,7 +11,3 @@ android {
         targetSdk 30
     }
 }
-
-dependencies {
-    // 没有 python{}，pyramid 只作为普通模块
-}
