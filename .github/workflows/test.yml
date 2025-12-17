@@ -52,6 +52,19 @@ jobs:
       - name: Force Gradle wrapper to 8.13
         run: ./gradlew wrapper --gradle-version 8.13
 
+      - name: Add default compileSdkVersion, NDK filters & Java 17
+        run: |
+          for f in app/build.gradle quickjs/build.gradle pyramid/build.gradle; do
+            # Add compileSdkVersion and ndk abiFilters if missing
+            if ! grep -q "compileSdkVersion" $f; then
+              echo -e "\nandroid {\n    compileSdkVersion ${ANDROID_API_LEVEL}\n    defaultConfig {\n        ndk { abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64' }\n    }\n}" >> $f
+            fi
+            # Force Java 17
+            if ! grep -q "sourceCompatibility" $f; then
+              echo -e "\nandroid {\n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n}" >> $f
+            fi
+          done
+
       - name: Build APK
         run: ./gradlew clean assembleRelease -Pandroid.overridePathCheck=true
 
