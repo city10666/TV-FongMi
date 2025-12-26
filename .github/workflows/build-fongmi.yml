@@ -13,8 +13,15 @@ jobs:
 
       - name: Install Python 3.10
         run: |
+          # 添加 deadsnakes PPA 源以获取 Python 3.10
           sudo apt update
+          sudo apt install -y software-properties-common
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
+          sudo apt update
+          
+          # 安装 Python 3.10 及相关工具
           sudo apt install -y python3.10 python3.10-venv python3.10-dev
+          
           # 配置 Python 3.10 为默认
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
           python3 --version # 验证版本
@@ -43,7 +50,9 @@ jobs:
         run: |
           echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
           echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
           echo "PYTHON_EXECUTABLE=/usr/bin/python3.10" >> $GITHUB_ENV
+          echo "PATH=/usr/bin/python3.10:\$PATH" >> $GITHUB_ENV
 
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
@@ -51,10 +60,16 @@ jobs:
       - name: Modify Chaquopy config to use Python 3.10
         run: |
           # 修改 app/build.gradle 中的 Chaquopy Python 版本
-          sed -i 's/chaquopy {[^}]*}/chaquopy {\n    pythonVersion "3.10"\n}/g' app/build.gradle
+          sed -i '/chaquopy {/a\        pythonVersion "3.10"' app/build.gradle
+          # 如果上面的命令不生效，尝试下面的命令
+          # sed -i 's/pythonVersion ".*"/pythonVersion "3.10"/' app/build.gradle
+          
           # 添加阿里云镜像加速 Python 包下载
           sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/public" }' build.gradle
           sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/google" }' build.gradle
+          
+          # 为 Chaquopy 添加国内镜像源
+          sed -i '/chaquopy {/a\        pip {\n            options "--index-url", "https://mirrors.aliyun.com/pypi/simple/"\n        }' app/build.gradle
 
       - name: Build Debug APK
         run: |
@@ -62,6 +77,7 @@ jobs:
         env:
           GRADLE_OPTS: "-Xmx4g"
           PYTHONPATH: /usr/bin/python3.10
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
       - name: Upload APK if success
         if: success()
