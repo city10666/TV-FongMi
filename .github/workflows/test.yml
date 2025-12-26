@@ -1,4 +1,4 @@
-name: Build APK
+name: Android CI with Java 17
 
 on:
   push:
@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ release ]
   workflow_dispatch:
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
 
 jobs:
   build:
@@ -15,9 +18,9 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive
+        fetch-depth: 0
     
-    - name: Set up JDK 17 with source/target compatibility
+    - name: Setup JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -25,36 +28,66 @@ jobs:
     
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
+      id: android-sdk
       with:
         api-level: 34
         build-tools-version: '34.0.0'
         ndk-version: '26.1.10909125'
+        cmake-version: '3.22.1'
+        sdkmanager: |
+          "platforms;android-34"
+          "build-tools;34.0.0"
+          "platform-tools"
+          "ndk;26.1.10909125"
+          "cmake;3.22.1"
     
-    - name: Grant execute permission for gradlew
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          gradle-${{ runner.os }}-
+    
+    - name: Make gradlew executable
       run: chmod +x gradlew
     
-    - name: Configure Gradle Java version
+    - name: Configure project for Java 17
       run: |
-        # 在 gradle.properties 中设置 Java 版本
-        echo "org.gradle.java.home=$JAVA_HOME_17_X64" >> gradle.properties
-        echo "org.gradle.jvmargs=-Xmx4g" >> gradle.properties
+        # 创建或修改 local.properties
+        JAVA_HOME_PATH=$(dirname $(dirname $(readlink -f $(which javac))))
+        echo "java.home=$JAVA_HOME_PATH" > local.properties
         
-        # 或者在项目的 build.gradle 中强制设置
-        cat >> local.properties << 'EOF'
-        java.home=$JAVA_HOME_17_X64
-        EOF
+        # 确保所有模块使用 Java 17
+        find . -name "build.gradle" -o -name "build.gradle.kts" | while read file; do
+          if grep -q "compileOptions" "$file"; then
+            sed -i 's/sourceCompatibility.*VERSION_[0-9]*/sourceCompatibility JavaVersion.VERSION_17/g' "$file"
+            sed -i 's/targetCompatibility.*VERSION_[0-9]*/targetCompatibility JavaVersion.VERSION_17/g' "$file"
+            sed -i 's/jvmTarget.*=.*"[0-9]*"/jvmTarget = "17"/g' "$file"
+          else
+            # 如果没有 compileOptions，在 android 块内添加
+            if grep -q "android {" "$file"; then
+              awk '/android \{/ {print; print "    compileOptions {"; print "        sourceCompatibility JavaVersion.VERSION_17"; print "        targetCompatibility JavaVersion.VERSION_17"; print "    }"; next} 1' "$file" > tmp && mv tmp "$file"
+            fi
+          fi
+        done
     
-    - name: Build Release APK
-      run: ./gradlew assembleRelease
-      env:
-        # 设置环境变量强制使用 Java 17
-        JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
-        ORG_GRADLE_PROJECT_SIGNINGKEY: ${{ secrets.SIGNING_KEY }}
-        ORG_GRADLE_PROJECT_SIGNINGPASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+    - name: Build with Gradle
+      run: |
+        ./gradlew assembleRelease \
+          -Pandroid.useAndroidX=true \
+          -Pandroid.enableJetifier=true \
+          -Dorg.gradle.java.home=$JAVA_HOME \
+          --no-daemon \
+          --stacktrace
     
-    - name: Upload APK artifact
+    - name: Find and Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: TV-APK
-        path: app/build/outputs/apk/release/*.apk
+        name: TV-Release-APK
+        path: |
+          **/build/outputs/apk/**/*.apk
+          **/build/outputs/bundle/**/*.aab
         retention-days: 7
