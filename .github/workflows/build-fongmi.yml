@@ -1,55 +1,77 @@
 name: Build FongMi TV APK
 on:
   push:
-    branches: [ main, release ]  # 兼容你的分支
-  workflow_dispatch:  # 手动触发开关
+    branches: [ main, release ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90  # 进一步延长超时，适配依赖下载
 
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 配置JDK 17
+      - name: 配置 JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
 
-      # 手动配置Android SDK（只装编译需要的，不装模拟器和系统镜像）
-      - name: 安装Android SDK工具
-        run: |
-          # 安装SDK管理器
-          mkdir -p $ANDROID_HOME/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d $ANDROID_HOME/cmdline-tools
-          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+      # 修复：使用新版 setup-android 正确参数
+      - name: 配置 Android SDK（仅编译必需组件）
+        uses: android-actions/setup-android@v3
+        with:
+          # 仅声明需要的包，不写 api-level/build-tools
+          packages: |
+            platforms;android-33
+            build-tools;33.0.2
+            extras;android;m2repository
+            extras;google;m2repository
+          accept-android-sdk-licenses: true  # 自动同意授权
 
-          # 接受所有SDK许可
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-
-          # 只安装编译需要的组件（无模拟器、无系统镜像）
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
-            "build-tools;36.0.0" \
-            "platform-tools" \
-            "platforms;android-36" \
-            "extras;android;m2repository" \
-            "extras;google;m2repository"
-
-      - name: 赋予gradlew执行权限
+      - name: 赋予 gradlew 执行权限
         run: chmod +x ./gradlew
 
-      - name: 编译Release APK
+      # 关键：强制替换项目所有仓库为阿里云，解决依赖下载失败
+      - name: 全局替换 Maven 镜像
         run: |
-          ./gradlew clean assembleRelease --no-daemon --stacktrace
-        env:
-          GRADLE_OPTS: "-Xmx2g"
+          # 修改根项目 build.gradle
+          cat > build.gradle << EOF
+          buildscript {
+              repositories {
+                  maven { url 'https://maven.aliyun.com/repository/google' }
+                  maven { url 'https://maven.aliyun.com/repository/public' }
+                  maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.4.2'
+              }
+          }
 
-      - name: 上传APK产物
+          allprojects {
+              repositories {
+                  maven { url 'https://maven.aliyun.com/repository/google' }
+                  maven { url 'https://maven.aliyun.com/repository/public' }
+                  maven { url 'https://maven.aliyun.com/repository/jcenter' }
+              }
+          }
+          EOF
+
+          # 修改 app 模块 build.gradle 的 compileSdk 和 buildTools 版本（强制匹配 SDK）
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 33/' app/build.gradle
+          sed -i 's/buildToolsVersion .*/buildToolsVersion "33.0.2"/' app/build.gradle
+
+      - name: 编译 Release APK
+        run: |
+          ./gradlew clean assembleRelease --no-daemon --info  # --info 输出详细日志，方便排查
+        env:
+          GRADLE_OPTS: "-Xmx4g"  # 分配4G内存，避免内存不足
+          ANDROID_HOME: ${{ github.workspace }}/android-sdk
+
+      - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
         with:
           name: FongMi-TV-APK
