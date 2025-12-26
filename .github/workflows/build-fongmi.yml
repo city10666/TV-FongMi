@@ -13,31 +13,41 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 安装系统级 Android SDK（原生方案，无坑）
+      - name: 安装并配置 Android SDK（修正目录结构）
         run: |
           # 安装依赖工具
           sudo apt update && sudo apt install -y wget unzip openjdk-17-jdk
-          # 下载 cmdline-tools（用于管理 SDK）
-          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d $HOME/android-sdk
-          # 配置 SDK 环境变量
+          
+          # 1. 创建标准 SDK 目录结构
           export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools
-          # 同意所有 SDK 授权
-          yes | sdkmanager --licenses
-          # 安装指定版本的 SDK 和构建工具（单行写法，避免格式错误）
+          mkdir -p $ANDROID_HOME/cmdline-tools/latest
+          
+          # 2. 下载并解压 cmdline-tools 到指定目录
+          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d $ANDROID_HOME/cmdline-tools/latest
+          # 移动解压后的文件到 latest 目录（解决层级问题）
+          mv $ANDROID_HOME/cmdline-tools/latest/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
+          rm -rf $ANDROID_HOME/cmdline-tools/latest/cmdline-tools
+          
+          # 3. 配置环境变量
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          
+          # 4. 同意所有 SDK 授权（抑制管道破裂错误）
+          yes '' | sdkmanager --licenses
+          
+          # 5. 安装 SDK 组件（单行声明，避免格式错误）
           sdkmanager "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
 
-      - name: 配置环境变量全局生效
+      - name: 配置全局环境变量
         run: |
           echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/bin" >> $GITHUB_PATH
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
 
       - name: 赋予 gradlew 执行权限
         run: chmod +x ./gradlew
 
-      - name: 强制替换 Maven 镜像（解决依赖下载）
+      - name: 强制替换 Maven 镜像 & 对齐编译版本
         run: |
           # 重写根 build.gradle
           cat > build.gradle << EOF
@@ -59,15 +69,17 @@ jobs:
               }
           }
           EOF
-          # 强制对齐 app 模块的编译版本
+          # 强制修改 app 模块的编译版本
           sed -i 's/compileSdkVersion .*/compileSdkVersion 33/' app/build.gradle
           sed -i 's/buildToolsVersion .*/buildToolsVersion "33.0.2"/' app/build.gradle
+          sed -i 's/targetSdkVersion .*/targetSdkVersion 33/' app/build.gradle
 
       - name: 编译 Release APK
         run: |
           ./gradlew clean assembleRelease --no-daemon --stacktrace
         env:
           GRADLE_OPTS: "-Xmx4g"
+          ANDROID_HOME: $HOME/android-sdk
 
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
