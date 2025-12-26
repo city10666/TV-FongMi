@@ -1,93 +1,125 @@
-name: Android CI with Java 17
+name: Build TV-FongMi APK
 
 on:
   push:
-    branches: [ release, main ]
+    branches: [ release, main, master ]
   pull_request:
     branches: [ release ]
-  workflow_dispatch:
+  workflow_dispatch:  # 允许手动触发
 
 env:
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
+  JAVA_VERSION: '17'
+  ANDROID_API: '21'  # Android 5.0+ (leanback通常需要更高版本)
+  BUILD_TOOLS: '34.0.0'
 
 jobs:
-  build:
+  build-leanback:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
+    - name: 1. 检出代码（包含子模块）
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        submodules: recursive
     
-    - name: Setup JDK 17
+    - name: 2. 设置 JDK ${{ env.JAVA_VERSION }}
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
     
-    - name: Setup Android SDK
+    - name: 3. 设置 Android SDK
       uses: android-actions/setup-android@v3
-      id: android-sdk
       with:
-        api-level: 34
-        build-tools-version: '34.0.0'
-        ndk-version: '26.1.10909125'
-        cmake-version: '3.22.1'
-        sdkmanager: |
-          "platforms;android-34"
-          "build-tools;34.0.0"
-          "platform-tools"
-          "ndk;26.1.10909125"
-          "cmake;3.22.1"
+        api-level: ${{ env.ANDROID_API }}
+        build-tools-version: ${{ env.BUILD_TOOLS }}
+        ndk-version: '26.1.10909125'  # 最新稳定版
     
-    - name: Cache Gradle
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          gradle-${{ runner.os }}-
-    
-    - name: Make gradlew executable
-      run: chmod +x gradlew
-    
-    - name: Configure project for Java 17
+    - name: 4. 验证项目结构
       run: |
-        # 创建或修改 local.properties
-        JAVA_HOME_PATH=$(dirname $(dirname $(readlink -f $(which javac))))
-        echo "java.home=$JAVA_HOME_PATH" > local.properties
+        echo "检查关键文件..."
+        ls -la
+        echo "---"
+        if [ -f "build.gradle" ]; then
+          echo "✅ 找到 build.gradle"
+        else
+          echo "❌ 缺少 build.gradle"
+          exit 1
+        fi
         
-        # 确保所有模块使用 Java 17
-        find . -name "build.gradle" -o -name "build.gradle.kts" | while read file; do
-          if grep -q "compileOptions" "$file"; then
-            sed -i 's/sourceCompatibility.*VERSION_[0-9]*/sourceCompatibility JavaVersion.VERSION_17/g' "$file"
-            sed -i 's/targetCompatibility.*VERSION_[0-9]*/targetCompatibility JavaVersion.VERSION_17/g' "$file"
-            sed -i 's/jvmTarget.*=.*"[0-9]*"/jvmTarget = "17"/g' "$file"
-          else
-            # 如果没有 compileOptions，在 android 块内添加
-            if grep -q "android {" "$file"; then
-              awk '/android \{/ {print; print "    compileOptions {"; print "        sourceCompatibility JavaVersion.VERSION_17"; print "        targetCompatibility JavaVersion.VERSION_17"; print "    }"; next} 1' "$file" > tmp && mv tmp "$file"
-            fi
-          fi
-        done
+        if [ -f "app/build.gradle" ]; then
+          echo "✅ 找到 app/build.gradle"
+        else
+          echo "❌ 缺少 app/build.gradle"
+          exit 1
+        fi
+        
+        if [ -d "app/src" ]; then
+          echo "✅ 找到 app/src 目录"
+          find app/src -name "AndroidManifest.xml" | head -5
+        fi
+        
+        echo "Gradle 版本:"
+        cat gradle/wrapper/gradle-wrapper.properties | grep distributionUrl || true
     
-    - name: Build with Gradle
+    - name: 5. 配置构建环境
       run: |
-        ./gradlew assembleRelease \
-          -Pandroid.useAndroidX=true \
-          -Pandroid.enableJetifier=true \
-          -Dorg.gradle.java.home=$JAVA_HOME \
-          --no-daemon \
-          --stacktrace
+        # 创建 local.properties（Android SDK 路径）
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+        echo "ndk.dir=$ANDROID_NDK" >> local.properties
+        
+        # 设置权限
+        chmod +x gradlew
+        
+        # 如果是中国用户，可加速 Gradle 下载
+        # sed -i 's|https\\://services.gradle.org|https\\://mirrors.cloud.tencent.com/gradle|g' gradle/wrapper/gradle-wrapper.properties
     
-    - name: Find and Upload APK
+    - name: 6. 构建 Leanback 版本
+      run: |
+        # 清理并构建
+        ./gradlew clean
+        
+        # 尝试构建不同的变体
+        echo "尝试构建 leanbackRelease..."
+        ./gradlew :app:assembleLeanbackRelease || echo "leanbackRelease 构建失败，尝试其他变体"
+        
+        # 如果失败，尝试通用构建
+        if [ ! -f "app/build/outputs/apk/leanback/release/*.apk" ]; then
+          echo "尝试构建通用版本..."
+          ./gradlew assembleRelease
+        fi
+    
+    - name: 7. 查找生成的 APK 文件
+      id: find-apk
+      run: |
+        APK_PATH=$(find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -1)
+        if [ -n "$APK_PATH" ]; then
+          echo "找到 APK: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          
+          # 列出所有 APK
+          echo "所有生成的 APK:"
+          find app/build/outputs -name "*.apk" -type f
+        else
+          echo "未找到 APK 文件"
+          echo "构建输出目录:"
+          find app/build/outputs -type d
+        fi
+    
+    - name: 8. 上传 APK 制品
+      if: steps.find-apk.outputs.apk_path != ''
       uses: actions/upload-artifact@v4
       with:
-        name: TV-Release-APK
+        name: TV-FongMi-APK
+        path: ${{ steps.find-apk.outputs.apk_path }}
+        retention-days: 30
+    
+    - name: 9. 上传构建报告
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Reports
         path: |
-          **/build/outputs/apk/**/*.apk
-          **/build/outputs/bundle/**/*.aab
+          app/build/reports/
+          build/reports/
         retention-days: 7
