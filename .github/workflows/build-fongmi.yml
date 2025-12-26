@@ -1,93 +1,37 @@
-name: Build FongMi TV Release APK
-
-# 触发条件：push到release分支、手动触发
+name: Build FongMi TV APK
 on:
   push:
-    branches: [ release ]
-    paths-ignore: # 忽略无关文件的提交，避免无效构建
-      - 'README.md'
-      - 'LICENSE'
-      - '.gitignore'
-  workflow_dispatch: # 手动触发开关
+    branches: [ main, release ]  # 兼容main和release分支
+  workflow_dispatch:  # 强制保留手动触发
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-      artifacts: write
+    timeout-minutes: 60  # 延长超时时间，防止依赖下载慢
 
     steps:
-      # 1. 拉取仓库代码
-      - name: Checkout Repository
+      - name: 拉取代码
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      # 2. 配置JDK 17（安卓14+编译要求）
-      - name: Set Up JDK 17
+      - name: 配置JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle # 缓存gradle依赖，加速下次构建
+          cache: gradle
 
-      # 3. 配置Android SDK环境
-      - name: Set Up Android SDK
-        uses: android-actions/setup-android@v3
+      # 关键：直接用官方Android容器，避免手动配置SDK出错
+      - name: 使用Android编译环境
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36 # 匹配项目build.gradle中的compileSdkVersion
-          build-tools: 36.0.0 # 匹配buildToolsVersion
-          ndk: 26.1.10909125 # 部分安卓项目依赖NDK，按需添加
-          cmake: 3.22.1
-          packages: |
-            platforms;android-36
-            build-tools;36.0.0
-            extras;android;m2repository
-            extras;google;m2repository
+          api-level: 33  # 降低版本，兼容性更高
+          script: |
+            chmod +x ./gradlew
+            ./gradlew clean assembleRelease --no-daemon
 
-      # 4. 赋予gradlew执行权限（Linux必做）
-      - name: Grant Execute Permission for gradlew
-        run: chmod +x ./gradlew
-
-      # 5. 替换Maven镜像为阿里云，解决依赖下载慢/失败
-      - name: Replace Maven Mirrors
-        run: |
-          # 修改项目根目录build.gradle的仓库源
-          sed -i 's|google()|maven { url "https://maven.aliyun.com/repository/google" }|g' build.gradle
-          sed -i 's|mavenCentral()|maven { url "https://maven.aliyun.com/repository/public" }|g' build.gradle
-          # 添加阿里云镜像到所有仓库配置
-          sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/jcenter" }' build.gradle
-
-      # 6. 清理并编译Release APK（无签名版）
-      - name: Build Release APK
-        run: |
-          ./gradlew clean
-          ./gradlew assembleRelease --stacktrace # --stacktrace用于报错时输出详细日志
-        env:
-          # 解决Gradle内存不足问题
-          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.daemon=false"
-
-      # 7. 上传APK产物到Action Artifacts
-      - name: Upload APK Artifact
+      - name: 上传APK产物
         uses: actions/upload-artifact@v4
         with:
-          name: FongMi-TV-APK-${{ github.run_id }}
-          path: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/release/*.txt # 包含构建信息
-          retention-days: 30 # 产物保留30天
-
-      # 8. （可选）上传APK到GitHub Release（需手动创建Release）
-      - name: Upload to GitHub Release
-        if: github.event_name == 'workflow_dispatch' # 仅手动触发时执行
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/release/*.apk
-          tag_name: v${{ github.run_id }}
-          name: FongMi TV Build ${{ github.run_id }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: FongMi-TV-APK
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
