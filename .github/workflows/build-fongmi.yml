@@ -11,7 +11,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Python 3.10
+      - name: 1. 重置系统环境（修复 PATH 根本问题）
+        run: |
+          # 强制重置 PATH 为 Ubuntu 默认值，确保所有基础命令可用
+          echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> $GITHUB_ENV
+          # 验证基础命令是否可用
+          /bin/echo "基础命令验证："
+          /bin/ls --version
+          /bin/sed --version
+          /bin/chmod --version
+
+      - name: 2. 安装 Python 3.10（依赖正常 PATH）
         run: |
           sudo apt update
           sudo apt install -y software-properties-common
@@ -21,67 +31,76 @@ jobs:
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
           python3 --version
 
-      - name: Set JDK 17
+      - name: 3. 配置 JDK 17（使用官方 Action 避免手动配置）
         uses: actions/setup-java@v4
         with:
           java-version: 17
           distribution: temurin
           cache: gradle
 
-      - name: Configure Android SDK (Fix License & PATH)
+      - name: 4. 配置 Android SDK（彻底修复许可证问题）
         run: |
-          # 1. 修复 PATH 环境变量（确保基础命令可用）
-          export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-          echo "PATH=$PATH" >> $GITHUB_ENV
-
-          # 2. 配置 Android SDK 目录
-          export ANDROID_HOME=$HOME/android-sdk
+          # 定义 SDK 目录（避免路径混乱）
+          ANDROID_HOME=$HOME/android-sdk
           mkdir -p $ANDROID_HOME/cmdline-tools/latest
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
 
-          # 3. 下载并解压 SDK 命令行工具
-          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d temp-tools
-          mv temp-tools/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
-          rm -rf temp-tools cmdline-tools.zip
+          # 下载并解压 SDK 命令行工具（使用 wget 绝对路径）
+          /usr/bin/wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
+          /usr/bin/unzip cmdline-tools.zip -d temp-tools
+          /bin/mv temp-tools/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
+          /bin/rm -rf temp-tools cmdline-tools.zip
 
-          # 4. 正确添加 SDK 路径到环境变量
-          SDK_BIN=$ANDROID_HOME/cmdline-tools/latest/bin
-          PLATFORM_TOOLS=$ANDROID_HOME/platform-tools
-          echo "$SDK_BIN" >> $GITHUB_PATH
-          echo "$PLATFORM_TOOLS" >> $GITHUB_PATH
+          # 定义 SDK 二进制文件路径（避免 PATH 依赖）
+          SDKMANAGER=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
 
-          # 5. 强制接受所有 Android SDK 许可证（关键修复）
-          echo "y" | $SDK_BIN/sdkmanager --licenses || true
+          # 强制接受所有许可证（使用 echo "y" 循环，覆盖所有许可证确认）
+          /bin/echo "y
+          y
+          y
+          y
+          y
+          y
+          y
+          y
+          y
+          y" | $SDKMANAGER --licenses
 
-          # 6. 安装指定 SDK 组件（确保路径正确）
-          $SDK_BIN/sdkmanager "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
+          # 安装 SDK 组件（使用绝对路径调用 sdkmanager）
+          $SDKMANAGER "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
 
-      - name: Export additional environment variables
+          # 添加 SDK 路径到环境变量（供后续步骤使用）
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+
+      - name: 5. 配置 Python 环境变量
         run: |
           echo "PYTHON_EXECUTABLE=/usr/bin/python3.10" >> $GITHUB_ENV
           echo "PATH=/usr/bin/python3.10:\$PATH" >> $GITHUB_ENV
 
-      - name: Grant execute permission to gradlew (Fix chmod issue)
+      - name: 6. 授予 gradlew 执行权限（使用绝对路径）
         run: |
-          # 显式使用 /bin/chmod 避免 PATH 问题
           /bin/chmod +x ./gradlew
 
-      - name: Modify Chaquopy config
+      - name: 7. 修改 Chaquopy 配置（使用绝对路径执行 sed）
         run: |
-          sed -i '/chaquopy {/a\        pythonVersion "3.10"' app/build.gradle
-          sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/public" }' build.gradle
-          sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/google" }' build.gradle
-          sed -i '/chaquopy {/a\        pip {\n            options "--index-url", "https://mirrors.aliyun.com/pypi/simple/"\n        }' app/build.gradle
+          # 用 /bin/sed 避免 PATH 问题，精准修改配置
+          /bin/sed -i '/chaquopy {/a\        pythonVersion "3.10"' app/build.gradle
+          /bin/sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/public" }' build.gradle
+          /bin/sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/google" }' build.gradle
+          /bin/sed -i '/chaquopy {/a\        pip {\n            options "--index-url", "https://mirrors.aliyun.com/pypi/simple/"\n        }' app/build.gradle
 
-      - name: Build Debug APK
+          # 验证修改是否生效（可选，用于调试）
+          /bin/cat app/build.gradle | /bin/grep -A 5 "chaquopy {"
+
+      - name: 8. 构建 Debug APK（使用绝对路径执行 gradlew）
         run: |
           ./gradlew clean assembleDebug --no-daemon
         env:
           GRADLE_OPTS: "-Xmx4g"
           PYTHONPATH: /usr/bin/python3.10
 
-      - name: Upload APK if success
+      - name: 9. 上传 APK 产物
         if: success()
         uses: actions/upload-artifact@v4
         with:
