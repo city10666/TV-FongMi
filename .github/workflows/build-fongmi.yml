@@ -11,60 +11,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 1. 重置系统环境
-        run: |
-          echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> $GITHUB_ENV
-          /bin/echo "基础命令验证："
-          /bin/ls --version
-          /bin/chmod --version
-
-      - name: 2. 配置 JDK 17
+      - name: 1. 配置 JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: 17
           distribution: temurin
           cache: gradle
 
-      - name: 3. 配置 Android SDK
+      - name: 2. 配置 Android SDK (使用预装版本)
+        uses: android-actions/setup-android@v3
+
+      - name: 3. 接受所有 Android SDK 许可证
         run: |
-          ANDROID_HOME=$HOME/android-sdk
-          mkdir -p $ANDROID_HOME/cmdline-tools/latest
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          yes | sdkmanager --licenses
 
-          /usr/bin/wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
-          /usr/bin/unzip cmdline-tools.zip -d temp-tools
-          /bin/mv temp-tools/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
-          /bin/rm -rf temp-tools cmdline-tools.zip
-
-          SDKMANAGER=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
-
-          /bin/echo "y
-          y
-          y
-          y
-          y
-          y
-          y
-          y
-          y
-          y" | $SDKMANAGER --licenses
-
-          $SDKMANAGER "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
-
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
-
-      - name: 4. 授予 gradlew 执行权限
+      - name: 4. 安装必要的 SDK 组件
         run: |
-          /bin/chmod +x ./gradlew
+          sdkmanager "platforms;android-33" "build-tools;33.0.2"
 
-      - name: 5. 构建 Debug APK
+      - name: 5. 授予 gradlew 执行权限
+        run: |
+          chmod +x ./gradlew
+
+      - name: 6. 构建 Debug APK
         run: |
           ./gradlew clean assembleDebug --no-daemon
         env:
           GRADLE_OPTS: "-Xmx4g"
 
-      - name: 6. 上传 APK 产物
+      - name: 7. 上传 APK 产物
         if: success()
         uses: actions/upload-artifact@v4
         with:
