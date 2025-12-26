@@ -5,7 +5,7 @@ on:
     branches: [ release, main ]
   pull_request:
     branches: [ release ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,7 +17,7 @@ jobs:
       with:
         submodules: recursive
     
-    - name: Set up JDK 17
+    - name: Set up JDK 17 with source/target compatibility
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -25,13 +25,30 @@ jobs:
     
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
+      with:
+        api-level: 34
+        build-tools-version: '34.0.0'
+        ndk-version: '26.1.10909125'
     
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     
+    - name: Configure Gradle Java version
+      run: |
+        # 在 gradle.properties 中设置 Java 版本
+        echo "org.gradle.java.home=$JAVA_HOME_17_X64" >> gradle.properties
+        echo "org.gradle.jvmargs=-Xmx4g" >> gradle.properties
+        
+        # 或者在项目的 build.gradle 中强制设置
+        cat >> local.properties << 'EOF'
+        java.home=$JAVA_HOME_17_X64
+        EOF
+    
     - name: Build Release APK
       run: ./gradlew assembleRelease
       env:
+        # 设置环境变量强制使用 Java 17
+        JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
         ORG_GRADLE_PROJECT_SIGNINGKEY: ${{ secrets.SIGNING_KEY }}
         ORG_GRADLE_PROJECT_SIGNINGPASSWORD: ${{ secrets.SIGNING_PASSWORD }}
     
