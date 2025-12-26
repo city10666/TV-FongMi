@@ -7,35 +7,27 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 安装并配置 Android SDK（修正目录结构）
+      - name: 安装依赖工具
         run: |
-          # 安装依赖工具
-          sudo apt update && sudo apt install -y wget unzip openjdk-17-jdk
-          
-          # 1. 创建标准 SDK 目录结构
+          sudo apt update && sudo apt install -y openjdk-17-jdk wget unzip
+
+      - name: 配置 Android SDK（标准目录结构）
+        run: |
           export ANDROID_HOME=$HOME/android-sdk
           mkdir -p $ANDROID_HOME/cmdline-tools/latest
-          
-          # 2. 下载并解压 cmdline-tools 到指定目录
           wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d $ANDROID_HOME/cmdline-tools/latest
-          # 移动解压后的文件到 latest 目录（解决层级问题）
-          mv $ANDROID_HOME/cmdline-tools/latest/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
-          rm -rf $ANDROID_HOME/cmdline-tools/latest/cmdline-tools
-          
-          # 3. 配置环境变量
+          unzip cmdline-tools.zip -d temp-tools
+          mv temp-tools/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
+          rm -rf temp-tools cmdline-tools.zip
+
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          
-          # 4. 同意所有 SDK 授权（抑制管道破裂错误）
-          yes '' | sdkmanager --licenses
-          
-          # 5. 安装 SDK 组件（单行声明，避免格式错误）
+          yes '' | sdkmanager --licenses || true
           sdkmanager "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
 
       - name: 配置全局环境变量
@@ -47,43 +39,23 @@ jobs:
       - name: 赋予 gradlew 执行权限
         run: chmod +x ./gradlew
 
-      - name: 强制替换 Maven 镜像 & 对齐编译版本
+      - name: 不修改项目 Gradle 配置（避免破坏原项目）
         run: |
-          # 重写根 build.gradle
-          cat > build.gradle << EOF
-          buildscript {
-              repositories {
-                  maven { url 'https://maven.aliyun.com/repository/google' }
-                  maven { url 'https://maven.aliyun.com/repository/public' }
-                  maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:7.4.2'
-              }
-          }
-          allprojects {
-              repositories {
-                  maven { url 'https://maven.aliyun.com/repository/google' }
-                  maven { url 'https://maven.aliyun.com/repository/public' }
-                  maven { url 'https://maven.aliyun.com/repository/jcenter' }
-              }
-          }
-          EOF
-          # 强制修改 app 模块的编译版本
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 33/' app/build.gradle
-          sed -i 's/buildToolsVersion .*/buildToolsVersion "33.0.2"/' app/build.gradle
-          sed -i 's/targetSdkVersion .*/targetSdkVersion 33/' app/build.gradle
+          # 只添加阿里云镜像，不重写 build.gradle
+          sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/public" }' build.gradle
+          sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/google" }' build.gradle
 
-      - name: 编译 Release APK
+      - name: 编译 APK 并输出详细日志（关键：--debug 模式）
         run: |
-          ./gradlew clean assembleRelease --no-daemon --stacktrace
+          ./gradlew clean assembleDebug --no-daemon --debug --stacktrace
         env:
-          GRADLE_OPTS: "-Xmx4g"
+          GRADLE_OPTS: "-Xmx6g"
           ANDROID_HOME: $HOME/android-sdk
 
-      - name: 上传 APK 产物
+      - name: 上传 APK 产物（若编译成功）
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: FongMi-TV-APK
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/debug/*.apk
           retention-days: 7
