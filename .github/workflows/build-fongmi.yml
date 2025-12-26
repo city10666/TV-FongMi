@@ -7,38 +7,39 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90  # 进一步延长超时，适配依赖下载
+    timeout-minutes: 90
 
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 配置 JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
+      - name: 安装系统级 Android SDK（原生方案，无坑）
+        run: |
+          # 安装依赖工具
+          sudo apt update && sudo apt install -y wget unzip openjdk-17-jdk
+          # 下载 cmdline-tools（用于管理 SDK）
+          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d $HOME/android-sdk
+          # 配置 SDK 环境变量
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools
+          # 同意所有 SDK 授权
+          yes | sdkmanager --licenses
+          # 安装指定版本的 SDK 和构建工具（单行写法，避免格式错误）
+          sdkmanager "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
 
-      # 修复：使用新版 setup-android 正确参数
-      - name: 配置 Android SDK（仅编译必需组件）
-        uses: android-actions/setup-android@v3
-        with:
-          # 仅声明需要的包，不写 api-level/build-tools
-          packages: |
-            platforms;android-33
-            build-tools;33.0.2
-            extras;android;m2repository
-            extras;google;m2repository
-          accept-android-sdk-licenses: true  # 自动同意授权
+      - name: 配置环境变量全局生效
+        run: |
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/bin" >> $GITHUB_PATH
+          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
 
       - name: 赋予 gradlew 执行权限
         run: chmod +x ./gradlew
 
-      # 关键：强制替换项目所有仓库为阿里云，解决依赖下载失败
-      - name: 全局替换 Maven 镜像
+      - name: 强制替换 Maven 镜像（解决依赖下载）
         run: |
-          # 修改根项目 build.gradle
+          # 重写根 build.gradle
           cat > build.gradle << EOF
           buildscript {
               repositories {
@@ -50,7 +51,6 @@ jobs:
                   classpath 'com.android.tools.build:gradle:7.4.2'
               }
           }
-
           allprojects {
               repositories {
                   maven { url 'https://maven.aliyun.com/repository/google' }
@@ -59,17 +59,15 @@ jobs:
               }
           }
           EOF
-
-          # 修改 app 模块 build.gradle 的 compileSdk 和 buildTools 版本（强制匹配 SDK）
+          # 强制对齐 app 模块的编译版本
           sed -i 's/compileSdkVersion .*/compileSdkVersion 33/' app/build.gradle
           sed -i 's/buildToolsVersion .*/buildToolsVersion "33.0.2"/' app/build.gradle
 
       - name: 编译 Release APK
         run: |
-          ./gradlew clean assembleRelease --no-daemon --info  # --info 输出详细日志，方便排查
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
         env:
-          GRADLE_OPTS: "-Xmx4g"  # 分配4G内存，避免内存不足
-          ANDROID_HOME: ${{ github.workspace }}/android-sdk
+          GRADLE_OPTS: "-Xmx4g"
 
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
