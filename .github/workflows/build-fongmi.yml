@@ -15,7 +15,7 @@ jobs:
     - name: 1. 检出代码
       uses: actions/checkout@v4
       with:
-        ref: release  # 明确指定release分支
+        ref: release
     
     - name: 2. 设置 JDK 17
       uses: actions/setup-java@v4
@@ -35,23 +35,18 @@ jobs:
         echo "=== 项目结构分析 ==="
         echo "根目录内容:"
         ls -la
-        
         echo -e "\n=== 查找关键文件 ==="
-        # 查找所有可能的构建文件
         find . -name "*.gradle" -o -name "*.gradle.kts" | sort
         find . -name "gradle-wrapper.properties" | head -5
-        
         echo -e "\n=== 检查Android源码 ==="
         find . -name "AndroidManifest.xml" | head -10
         find . -path "*/src/*" -type f | head -20
-        
         echo -e "\n=== Gradle Wrapper信息 ==="
         if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
           echo "Gradle Wrapper配置:"
           cat gradle/wrapper/gradle-wrapper.properties
         else
           echo "⚠️ 未找到gradle-wrapper.properties"
-          # 尝试在其他位置查找
           find . -name "gradle-wrapper.properties" 2>/dev/null
         fi
     
@@ -174,13 +169,9 @@ EOF
     - name: 8. 尝试构建
       run: |
         echo "=== 尝试构建 ==="
-        
-        # 先检查gradlew是否存在
         if [ -f "gradlew" ]; then
           echo "使用gradlew构建..."
           ./gradlew tasks --all || true
-          
-          # 尝试不同的构建任务
           echo -e "\n尝试常见构建任务:"
           for task in "assemble" "assembleRelease" "assembleDebug" "build" ":app:assemble"; do
             echo -e "\n=== 尝试: ./gradlew $task ==="
@@ -188,9 +179,6 @@ EOF
           done
         else
           echo "❌ gradlew不存在，无法构建"
-          
-          # 尝试使用gradle命令
-          echo "尝试直接使用gradle..."
           gradle tasks --all || true
         fi
     
@@ -202,8 +190,6 @@ EOF
           echo "找到APK: $file"
           ls -la "$file"
         done
-        
-        # 列出构建目录
         echo -e "\n=== 构建输出目录 ==="
         find . -type d -name "outputs" -o -name "build" | sort | while read dir; do
           echo "目录: $dir"
