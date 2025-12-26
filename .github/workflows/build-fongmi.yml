@@ -13,18 +13,13 @@ jobs:
 
       - name: Install Python 3.10
         run: |
-          # 添加 deadsnakes PPA 源以获取 Python 3.10
           sudo apt update
           sudo apt install -y software-properties-common
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt update
-          
-          # 安装 Python 3.10 及相关工具
           sudo apt install -y python3.10 python3.10-venv python3.10-dev
-          
-          # 配置 Python 3.10 为默认
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
-          python3 --version # 验证版本
+          python3 --version
 
       - name: Set JDK 17
         uses: actions/setup-java@v4
@@ -33,42 +28,50 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: Configure Android SDK
+      - name: Configure Android SDK (Fix License & PATH)
         run: |
+          # 1. 修复 PATH 环境变量（确保基础命令可用）
+          export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          echo "PATH=$PATH" >> $GITHUB_ENV
+
+          # 2. 配置 Android SDK 目录
           export ANDROID_HOME=$HOME/android-sdk
           mkdir -p $ANDROID_HOME/cmdline-tools/latest
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+
+          # 3. 下载并解压 SDK 命令行工具
           wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O cmdline-tools.zip
           unzip cmdline-tools.zip -d temp-tools
           mv temp-tools/cmdline-tools/* $ANDROID_HOME/cmdline-tools/latest/
           rm -rf temp-tools cmdline-tools.zip
 
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          yes '' | sdkmanager --licenses || true
-          sdkmanager "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
+          # 4. 正确添加 SDK 路径到环境变量
+          SDK_BIN=$ANDROID_HOME/cmdline-tools/latest/bin
+          PLATFORM_TOOLS=$ANDROID_HOME/platform-tools
+          echo "$SDK_BIN" >> $GITHUB_PATH
+          echo "$PLATFORM_TOOLS" >> $GITHUB_PATH
 
-      - name: Export environment variables
+          # 5. 强制接受所有 Android SDK 许可证（关键修复）
+          echo "y" | $SDK_BIN/sdkmanager --licenses || true
+
+          # 6. 安装指定 SDK 组件（确保路径正确）
+          $SDK_BIN/sdkmanager "platforms;android-33" "build-tools;33.0.2" "extras;android;m2repository" "extras;google;m2repository"
+
+      - name: Export additional environment variables
         run: |
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
           echo "PYTHON_EXECUTABLE=/usr/bin/python3.10" >> $GITHUB_ENV
           echo "PATH=/usr/bin/python3.10:\$PATH" >> $GITHUB_ENV
 
-      - name: Grant execute permission to gradlew
-        run: chmod +x ./gradlew
-
-      - name: Modify Chaquopy config to use Python 3.10
+      - name: Grant execute permission to gradlew (Fix chmod issue)
         run: |
-          # 修改 app/build.gradle 中的 Chaquopy Python 版本
+          # 显式使用 /bin/chmod 避免 PATH 问题
+          /bin/chmod +x ./gradlew
+
+      - name: Modify Chaquopy config
+        run: |
           sed -i '/chaquopy {/a\        pythonVersion "3.10"' app/build.gradle
-          # 如果上面的命令不生效，尝试下面的命令
-          # sed -i 's/pythonVersion ".*"/pythonVersion "3.10"/' app/build.gradle
-          
-          # 添加阿里云镜像加速 Python 包下载
           sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/public" }' build.gradle
           sed -i '/repositories {/a\        maven { url "https://maven.aliyun.com/repository/google" }' build.gradle
-          
-          # 为 Chaquopy 添加国内镜像源
           sed -i '/chaquopy {/a\        pip {\n            options "--index-url", "https://mirrors.aliyun.com/pypi/simple/"\n        }' app/build.gradle
 
       - name: Build Debug APK
@@ -77,7 +80,6 @@ jobs:
         env:
           GRADLE_OPTS: "-Xmx4g"
           PYTHONPATH: /usr/bin/python3.10
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
       - name: Upload APK if success
         if: success()
