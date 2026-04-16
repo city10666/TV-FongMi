@@ -40,7 +40,6 @@ public class PlayerHelper {
         exo.getSubtitleView().setStyle(getCaptionStyle());
         exo.getSubtitleView().setApplyEmbeddedStyles(true);
         exo.getSubtitleView().setApplyEmbeddedFontSizes(false);
-        if (Setting.getSubtitlePosition() != 0) exo.getSubtitleView().setBottomPosition(Setting.getSubtitlePosition());
         if (Setting.getSubtitleTextSize() != 0) exo.getSubtitleView().setFractionalTextSize(Setting.getSubtitleTextSize());
     }
 

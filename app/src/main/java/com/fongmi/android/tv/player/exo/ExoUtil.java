@@ -54,16 +54,13 @@ public class ExoUtil {
         builder.setDrmConfiguration(buildDrmConfig(spec.getDrm()));
         builder.setRequestMetadata(buildRequestMetadata(spec));
         builder.setMediaMetadata(spec.getMetadata());
-        builder.setAdblock(Setting.isAdblock());
         builder.setMimeType(spec.getFormat());
         builder.setImageDurationMs(15000);
         builder.setMediaId(spec.getKey());
-        builder.setDecode(decode);
         return builder.build();
     }
 
     public static String getMimeType(int errorCode) {
-        if (errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED || errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED) return MimeTypes.APPLICATION_OCTET_STREAM;
         if (errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED || errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) return MimeTypes.APPLICATION_M3U8;
         return null;
     }
@@ -89,7 +86,7 @@ public class ExoUtil {
         return trackSelector;
     }
 
-    public static RenderersFactory buildRenderersFactory(int renderMode) {
+    private static RenderersFactory buildRenderersFactory(int renderMode) {
         return new DefaultRenderersFactory(App.get()).setEnableDecoderFallback(true).setExtensionRendererMode(renderMode);
     }
 
@@ -99,54 +96,6 @@ public class ExoUtil {
 
     private static MediaItem.RequestMetadata buildRequestMetadata(PlaySpec spec) {
         return new MediaItem.RequestMetadata.Builder().setMediaUri(spec.getUri()).setExtras(PlayerHelper.toBundle(spec.getHeaders())).build();
-    }
-
-    public static void setSubtitleView(PlayerView exo) {
-        exo.getSubtitleView().setStyle(getCaptionStyle());
-        exo.getSubtitleView().setApplyEmbeddedStyles(true);
-        exo.getSubtitleView().setApplyEmbeddedFontSizes(false);
-        if (Setting.getSubtitleTextSize() != 0) exo.getSubtitleView().setFractionalTextSize(Setting.getSubtitleTextSize());
-    }
-
-    public static String getMimeType(String path) {
-        if (TextUtils.isEmpty(path)) return "";
-        if (path.endsWith(".vtt")) return MimeTypes.TEXT_VTT;
-        if (path.endsWith(".ssa") || path.endsWith(".ass")) return MimeTypes.TEXT_SSA;
-        if (path.endsWith(".ttml") || path.endsWith(".xml") || path.endsWith(".dfxp")) return MimeTypes.APPLICATION_TTML;
-        return MimeTypes.APPLICATION_SUBRIP;
-    }
-
-    public static String getMimeType(int errorCode) {
-        if (errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED || errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) return MimeTypes.APPLICATION_M3U8;
-        return null;
-    }
-
-    public static MediaItem getMediaItem(String key, Map<String, String> headers, Uri uri, String mimeType, Drm drm, List<Sub> subs, int decode) {
-        MediaItem.Builder builder = new MediaItem.Builder().setUri(uri);
-        builder.setRequestMetadata(getRequestMetadata(headers, uri));
-        builder.setSubtitleConfigurations(getSubtitleConfigs(subs));
-        if (drm != null) builder.setDrmConfiguration(drm.get());
-        builder.setMediaId(key == null ? uri.toString() : key);
-        if (mimeType != null) builder.setMimeType(mimeType);
-        builder.setMediaId(uri.toString());
-        builder.setImageDurationMs(15000);
-        return builder.build();
-    }
-
-    public static Bundle toBundle(Map<String, String> headers) {
-        Bundle bundle = new Bundle();
-        headers.forEach(bundle::putString);
-        return bundle;
-    }
-
-    public static Map<String, String> extractHeaders(MediaItem item) {
-        Bundle extras = item.requestMetadata.extras;
-        if (extras == null) return new HashMap<>();
-        return extras.keySet().stream().filter(key -> extras.getString(key) != null).collect(Collectors.toMap(key -> key, extras::getString));
-    }
-
-    public static MediaItem.RequestMetadata getRequestMetadata(Map<String, String> headers, Uri uri) {
-        return new MediaItem.RequestMetadata.Builder().setMediaUri(uri).setExtras(toBundle(headers)).build();
     }
 
     private static List<MediaItem.SubtitleConfiguration> buildSubtitleConfigs(List<Sub> subs) {

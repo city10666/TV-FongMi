@@ -167,7 +167,6 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     }
 
     private void initPlayerViews() {
-        getExoView().setRender(Setting.getRender());
         PlayerHelper.setSubtitleView(getExoView());
         getSeekView().setPlayer(mController);
     }
@@ -227,40 +226,6 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         mService.removePlayerCallback(mPlayerCallback);
         unbindService(this);
         mService = null;
-    }
-
-    private void buildControllerAsync() {
-        SessionToken token = new SessionToken(this, new ComponentName(this, PlaybackService.class));
-        mControllerFuture = new MediaController.Builder(this, token).setListener(this).buildAsync();
-        mControllerFuture.addListener(this::onControllerConnected, ContextCompat.getMainExecutor(this));
-    }
-
-    private void onControllerConnected() {
-        try {
-            mController = mControllerFuture.get();
-            if (mController == null) return;
-            mController.addListener(this);
-            initPlayerViews();
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void initPlayerViews() {
-        ExoUtil.setSubtitleView(getExoView());
-        getSeekView().setPlayer(mController);
-    }
-
-    private PendingIntent buildSessionIntent() {
-        Intent intent = new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-        Bundle extras = getIntent().getExtras();
-        if (extras != null) intent.putExtras(extras);
-        return PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-    }
-
-    private void closePiP() {
-        if (!isInPictureInPictureMode()) return;
-        detach();
-        finish();
     }
 
     private final PlaybackService.PlayerCallback mPlayerCallback = new PlaybackService.PlayerCallback() {

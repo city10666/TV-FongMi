@@ -1,6 +1,5 @@
 package com.fongmi.android.tv.player.engine;
 
-import androidx.media3.common.MediaTitle;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
@@ -86,18 +85,8 @@ public class ExoPlayerEngine implements PlayerEngine {
     }
 
     @Override
-    public boolean haveTitle() {
-        return !player.getCurrentMediaTitles().isEmpty();
-    }
-
-    @Override
     public Tracks getCurrentTracks() {
         return player.getCurrentTracks();
-    }
-
-    @Override
-    public List<MediaTitle> getCurrentMediaTitles() {
-        return player.getCurrentMediaTitles();
     }
 
     @Override
